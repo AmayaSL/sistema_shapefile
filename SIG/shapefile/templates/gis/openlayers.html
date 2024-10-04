@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenLayers</title>
+    <script src="https://openlayers.org/en/latest/build/ol.js"></script>
+</head>
+<body>
+    <div id="map"></div>
+    <script>
+        var map = new ol.Map({
+            target: 'map',
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM()
+                })
+            ],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([-74.2373, 8.2531]), // Ajusta según tu ubicación
+                zoom: 10
+            })
+        });
+    </script>
+</body>
+</html>
