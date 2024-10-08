@@ -11,7 +11,10 @@ from rest_framework.decorators import api_view
 from django.core.files.storage import default_storage
 import os
 import geopandas as gpd
+import pandas as pd
 import tempfile
+from decimal import Decimal
+
 
 # Create your views here.
 
@@ -79,10 +82,9 @@ def cargarArchivoVista(request):
     return render(request, 'archivo/cargar_archivo.html')  # Invoca la plantilla con el formulario
 
 
-
 @api_view(['POST'])
 def cargarArchivo(request):
-    shapefile_shp = request.FILES.get('shapefile_shp') #creacion de las variables locales
+    shapefile_shp = request.FILES.get('shapefile_shp')
     shapefile_shx = request.FILES.get('shapefile_shx')
     shapefile_dbf = request.FILES.get('shapefile_dbf')
     shapefile_cpg = request.FILES.get('shapefile_cpg')
@@ -93,87 +95,86 @@ def cargarArchivo(request):
         return Response({'error': 'No se ha proporcionado ningún archivo .shp o .shx o .dbf o . cpg o .pjr o .qmd'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        # Crear un directorio temporal
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Guardar el archivo .shp en el directorio temporal
-            if not shapefile_shp:
-                return Response({'error': 'El archivo .shp no fue proporcionado'}, status=status.HTTP_400_BAD_REQUEST)
-
             shp_path = os.path.join(temp_dir, 'temp_shapefile.shp')
             with open(shp_path, 'wb') as f:
                 for chunk in shapefile_shp.chunks():
                     f.write(chunk)
 
-            # Confirmar que el archivo .shp se ha guardado
             if not os.path.exists(shp_path):
                 return Response({'error': 'El archivo .shp no se guardó correctamente'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Verificar si hay un archivo .shx correspondiente
-            if not shapefile_shx:
-                return Response({'error': 'El archivo .shx no fue proporcionado'}, status=status.HTTP_400_BAD_REQUEST)
 
             shx_path = os.path.join(temp_dir, 'temp_shapefile.shx')
             with open(shx_path, 'wb') as f:
                 for chunk in shapefile_shx.chunks():
                     f.write(chunk)
             
-            if not os.path.exists(shx_path):
-                return Response({'error': 'El archivo .shx no se encontró'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # Verificar si hay un archivo .dbf correspondiente
-            if not shapefile_dbf:
-                return Response({'error': 'El archivo .dbf no fue proporcionado'}, status=status.HTTP_400_BAD_REQUEST)
-
             dbf_path = os.path.join(temp_dir, 'temp_shapefile.dbf')
             with open(dbf_path, 'wb') as f:
                 for chunk in shapefile_dbf.chunks():
                     f.write(chunk)
-            if not os.path.exists(dbf_path):
-                return Response({'error': 'El archivo .dbf no se encontró'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # Verificar si hay un archivo .cpg correspondiente
-            if not shapefile_cpg:
-                return Response({'error': 'El archivo .cpg no fue proporcionado'}, status=status.HTTP_400_BAD_REQUEST)
 
             cpg_path = os.path.join(temp_dir, 'temp_shapefile.cpg')
             with open(cpg_path, 'wb') as f:
                 for chunk in shapefile_cpg.chunks():
                     f.write(chunk)
-            if not os.path.exists(cpg_path):
-                return Response({'error': 'El archivo .cpg no se encontró'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
 
-            if not shapefile_pjr:
-                return Response({'error': 'El archivo .pjr no fue proporcionado'}, status=status.HTTP_400_BAD_REQUEST)
-
-                # Establecer la ruta del archivo
             pjr_path = os.path.join(temp_dir, 'temp_shapefile.pjr')
+            with open(pjr_path, 'wb') as f:
+                for chunk in shapefile_pjr.chunks():
+                    f.write(chunk)
 
-            try:
-            # Guardar el archivo .pjr en la ruta temporal
-                with open(pjr_path, 'wb') as f:
-                    for chunk in shapefile_pjr.chunks():
-                        f.write(chunk)
-
-                # Verificar si el archivo fue guardado correctamente
-                if not os.path.exists(pjr_path):
-                    return Response({'error': 'El archivo .pjr no se encontró después de guardarlo'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            except Exception as e:
-                return Response({'error': f'Ocurrió un error al guardar el archivo .pjr: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             # Leer el shapefile usando GeoPandas
             gdf = gpd.read_file(shp_path)
 
-            # Procesar cada geometría en el shapefile y guardarla en la base de datos
+            print("Columnas del DataFrame:", gdf.columns)
+
+            # Después de leer el shapefile
+            gdf = gpd.read_file(shp_path)
+            print(gdf.head())  # Imprime las primeras filas del DataFrame
+            print(gdf.columns)  # Imprime los nombres de las columnas
+
+            
+            # Procesar cada fila en el DataFrame
             for _, row in gdf.iterrows():
-                geom = row.geometry
-                if geom.geom_type == 'Point':  # Solo manejar puntos por ahora
-                    point = Point(geom.x, geom.y)
-                    MinasPoint.objects.create(geom=point)
+    #            y = row['Y']  # Usar el valor directamente de la fila
+    #            x = row['X']  # Usar el valor directamente de la fila
+                y_str = str(row['Y']).replace(',', '').replace('.','').strip()  # Eliminar comas, puntos y espacios
+                x_str = str(row['X']).replace(',', '').replace('.','').strip()  # Eliminar comas, puntos y espacios
 
-                    if gdf.isnull(geom.x) or gdf.isnull(geom.y):
-                        return Response({'error': 'El shapefile contiene puntos sin coordenadas válidas'}, status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    y = float(y_str)  # Convertir a float sin redondear
+                    x = float(x_str)  # Convertir a float sin redondear
+                except ValueError:
+                    return Response({'error': f'El valor {y_str} o {x_str} no es un número válido'}, status=status.HTTP_400_BAD_REQUEST)
 
+
+                # Verificar que X e Y no sean nulos
+                if pd.isnull(y) or pd.isnull(x):
+                    return Response({'error': 'El shapefile contiene puntos sin coordenadas válidas'}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Si X e Y son válidos, procedemos a crear el objeto
+                MinasPoint.objects.create(
+                    departamen = row['Departamen'],
+                    cod_dep=row['Cod_dep'],
+                    municipio = row['Municipio'],
+                    cod_mun=row['Cod_mun'],
+                    zona = row['Zona'],
+                    vereda = row['Vereda'],
+                    ano=row['Ano'],
+                    mes=row['Mes'],
+                    edad=row['Edad'],
+                    ocupacion=row['Ocupacion'],
+                    genero=row['Genero'],
+                    condicion=row['Condicion'],
+                    y=y,  # Usar el valor directamente de la fila
+                    x=x,  # Usar el valor directamente de la fila
+                    lugar_deto=row['Lugar_deto'],
+                    actividad=row['Actividad'],
+                    y_cmt12=row['Y_CMT12'],
+                    x_cmt12=row['X_CMT12'],
+                    geom= Point(x, y, srid=4326)  
+                )
 
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
